@@ -1,11 +1,7 @@
 mysql-connector-python==8.4.0
 python-dotenv==1.0.1
-queue
-datetime
 urllib.parse
 winsound
 os
-json
 webbrowser
-time
 mysql.connector
