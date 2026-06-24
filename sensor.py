@@ -3,7 +3,10 @@ import queue
 from datetime import datetime
 import socket
 import urllib.parse
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 import os
 import json
 import webbrowser
