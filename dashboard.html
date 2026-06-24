@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T20 Telemetry Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d0e12;
+            --panel-bg: rgba(20, 22, 30, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --color-temp: #ff5e57;
+            --color-humidity: #0fbcf9;
+            --color-normal: #05c46b;
+            --color-alert: #ff3f34;
+            --font-main: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background-color: var(--bg-color); color: var(--text-primary); font-family: var(--font-main); min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; background: rgba(13, 14, 18, 0.8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100; }
+        .logo-section h1 { font-size: 1.4rem; font-weight: 700; }
+        .logo-section h1 span {
+    background: linear-gradient(135deg, var(--color-humidity), var(--color-temp));
+    -webkit-background-clip: text;
+    background-clip: text; /* Added for standard browser compatibility */
+    -webkit-text-fill-color: transparent;
+}
+        
+        .status-badge { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); padding: 6px 14px; border-radius: 20px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.connected { background-color: var(--color-normal); box-shadow: 0 0 10px var(--color-normal); animation: pulse-dot 2s infinite; }
+        .status-dot.waiting { background-color: #ffa502; box-shadow: 0 0 10px #ffa502; animation: pulse-dot 1.5s infinite; }
+        @keyframes pulse-dot { 0%, 100% { transform: scale(0.9); opacity: 0.6; } 50% { transform: scale(1.2); opacity: 1; } }
+
+        main { flex: 1; padding: 30px 40px; max-width: 1600px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; }
+        
+        #loading-panel { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; background: var(--panel-bg); border-radius: 16px; border: 1px solid var(--border-color); }
+        .spinner { width: 50px; height: 50px; border: 4px solid rgba(255, 255, 255, 0.05); border-top: 4px solid var(--color-humidity); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        #dashboard-content { display: none; flex-direction: column; gap: 30px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+        .stat-card { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; box-shadow: var(--glass-shadow); display: flex; flex-direction: column; gap: 10px; }
+        .stat-card.temp-card { border-left: 4px solid var(--color-temp); }
+        .stat-card.humidity-card { border-left: 4px solid var(--color-humidity); }
+        .stat-header { display: flex; justify-content: space-between; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
+        .stat-value { font-size: 2.2rem; font-weight: 700; display: flex; align-items: baseline; gap: 4px; }
+        .stat-unit { font-size: 1.2rem; font-weight: 500; color: var(--text-secondary); }
+        .stat-sub { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px; }
+        .stat-sub span strong { color: var(--text-primary); }
+
+        .dashboard-body { display: grid; grid-template-columns: 1.4fr 1fr; gap: 30px; }
+        .panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; }
+        .panel-title { font-size: 1.1rem; font-weight: 700; }
+        .chart-container { position: relative; width: 100%; height: 350px; }
+        
+        .table-container { max-height: 350px; overflow-y: auto; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); background: rgba(0, 0, 0, 0.2); }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { background: rgba(13, 14, 18, 0.6); color: var(--text-secondary); font-size: 0.8rem; padding: 12px 16px; position: sticky; top: 0; border-bottom: 1px solid var(--border-color); z-index: 20; }
+        td { padding: 12px 16px; font-size: 0.9rem; border-bottom: 1px solid rgba(255, 255, 255, 0.03); }
+        .mono-text { font-family: var(--font-mono); font-size: 0.85rem; }
+        
+        tr.new-row { animation: slide-in-row 0.6s ease-out forwards; }
+        @keyframes slide-in-row { from { background-color: rgba(15, 188, 249, 0.15); transform: translateY(-10px); opacity: 0.4; } to { background-color: transparent; transform: translateY(0); opacity: 1; } }
+        tr.alert-row { background-color: rgba(255, 63, 52, 0.06); }
+        .temp-alert-badge { background: rgba(255, 63, 52, 0.15); color: var(--color-alert); border: 1px solid rgba(255, 63, 52, 0.3); padding: 2px 8px; border-radius: 4px; font-weight: 700; }
+
+        .alarm-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(255, 0, 0, 0.2); backdrop-filter: blur(6px); z-index: 9999; display: flex; align-items: center; justify-content: center; cursor: pointer; animation: system-flash-bg 1.2s infinite alternate ease-in-out; }
+        .alarm-card { background: rgba(18, 10, 10, 0.95); border: 2px solid var(--color-alert); border-radius: 20px; padding: 40px; text-align: center; width: 90%; max-width: 480px; box-shadow: 0 0 50px rgba(255, 63, 52, 0.4); }
+        .alarm-card h2 { font-size: 1.8rem; margin: 10px 0; }
+        .alarm-btn { background: var(--color-alert); color: white; border: none; padding: 12px 30px; font-size: 1rem; border-radius: 8px; cursor: pointer; margin-top: 20px;}
+        @keyframes system-flash-bg { from { background-color: rgba(255, 0, 0, 0.15); } to { background-color: rgba(255, 0, 0, 0.45); } }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div id="alarm-overlay" class="alarm-overlay hidden" onclick="dismissAlarm()">
+        <div class="alarm-card" onclick="event.stopPropagation()">
+            <div style="font-size: 3.5rem;">⚠️</div>
+            <h2>CRITICAL ALARM</h2>
+            <p>Temperature exceeded <span style="color: var(--color-alert); font-weight: 700;">30°C</span>.</p>
+            <button class="alarm-btn" onclick="dismissAlarm()">Acknowledge Alert</button>
+        </div>
+    </div>
+
+    <header>
+        <div class="logo-section"><h1>T20 <span>Environment Logger</span></h1></div>
+        <div class="status-badge">
+            <div id="status-dot" class="status-dot waiting"></div>
+            <span id="status-text">Connecting...</span>
+        </div>
+    </header>
+
+    <main>
+        <div id="loading-panel">
+            <div class="spinner"></div>
+            <div style="margin-top: 20px; color: var(--text-secondary);">Waiting for logger connection...</div>
+        </div>
+
+        <div id="dashboard-content">
+            <div class="stats-grid">
+                <div class="stat-card temp-card">
+                    <div class="stat-header"><span>Latest Temp</span><span style="color: var(--color-temp);">• Live</span></div>
+                    <div class="stat-value" id="latest-temp">-- <span class="stat-unit">°C</span></div>
+                    <div class="stat-sub"><span>Min: <strong id="min-temp">--°C</strong></span><span>Max: <strong id="max-temp">--°C</strong></span></div>
+                </div>
+                <div class="stat-card humidity-card">
+                    <div class="stat-header"><span>Latest Humidity</span><span style="color: var(--color-humidity);">• Live</span></div>
+                    <div class="stat-value" id="latest-humidity">-- <span class="stat-unit">%</span></div>
+                    <div class="stat-sub"><span>Min: <strong id="min-humidity">--%</strong></span><span>Max: <strong id="max-humidity">--%</strong></span></div>
+                </div>
+            </div>
+
+            <div class="dashboard-body">
+                <div class="panel">
+                    <div class="panel-header"><div class="panel-title">Environmental Trends</div></div>
+                    <div class="chart-container"><canvas id="telemetryChart"></canvas></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header"><div class="panel-title">Real-Time Event Stream</div></div>
+                    <div class="table-container">
+                        <table>
+                            <thead><tr><th>Timestamp</th><th>Temp</th><th>Humidity</th></tr></thead>
+                            <tbody id="telemetry-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let telemetryHistory = [];
+        let chartInstance = null;
+        let alarmTriggered = false;
+
+        async function fetchTelemetry() {
+            try {
+                const response = await fetch('/api/data');
+                if (!response.ok) throw new Error('API server down');
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    document.getElementById('status-dot').className = 'status-dot connected';
+                    document.getElementById('status-text').innerText = 'Logger Connected';
+                    document.getElementById('loading-panel').style.display = 'none';
+                    document.getElementById('dashboard-content').style.display = 'flex';
+                    processNewTelemetry(data);
+                }
+            } catch (err) {
+                document.getElementById('status-dot').className = 'status-dot waiting';
+                document.getElementById('status-text').innerText = 'Server Offline';
+            }
+        }
+
+        function processNewTelemetry(data) {
+            if (data.length === telemetryHistory.length) return; // No new changes
+            
+            const newRecords = data.slice(telemetryHistory.length);
+            telemetryHistory = data;
+
+            newRecords.forEach(record => {
+                appendRowToTable(record);
+                const tempVal = parseFloat(record.temp);
+                if (tempVal >= 30.0 && !alarmTriggered) {
+                    alarmTriggered = true;
+                    document.getElementById('alarm-overlay').classList.remove('hidden');
+                }
+            });
+
+            updateStatsUI();
+            updateChart();
+        }
+
+        function appendRowToTable(record) {
+            const tbody = document.getElementById('telemetry-table-body');
+            const row = document.createElement('tr');
+            row.className = 'new-row';
+            
+            const tempVal = parseFloat(record.temp);
+            const isHigh = tempVal >= 30.0;
+            if (isHigh) row.classList.add('alert-row');
+
+            row.innerHTML = `
+                <td class="mono-text">${record.time}</td>
+                <td>${isHigh ? `<span class="temp-alert-badge">${tempVal.toFixed(2)}°C</span>` : `<span class="mono-text" style="color: var(--color-temp);">${tempVal.toFixed(2)}°C</span>`}</td>
+                <td class="mono-text" style="color: var(--color-humidity);">${parseFloat(record.humidity).toFixed(2)}%</td>
+            `;
+
+            tbody.insertBefore(row, tbody.firstChild);
+            if (tbody.children.length > 100) tbody.removeChild(tbody.lastChild);
+        }
+
+        function updateStatsUI() {
+            const temps = telemetryHistory.map(d => parseFloat(d.temp));
+            const hums = telemetryHistory.map(d => parseFloat(d.humidity));
+            
+            const latest = telemetryHistory[telemetryHistory.length - 1];
+            document.getElementById('latest-temp').innerHTML = `${parseFloat(latest.temp).toFixed(2)} <span class="stat-unit">°C</span>`;
+            document.getElementById('latest-humidity').innerHTML = `${parseFloat(latest.humidity).toFixed(2)} <span class="stat-unit">%</span>`;
+            
+            document.getElementById('min-temp').innerText = `${Math.min(...temps).toFixed(2)}°C`;
+            document.getElementById('max-temp').innerText = `${Math.max(...temps).toFixed(2)}°C`;
+            document.getElementById('min-humidity').innerText = `${Math.min(...hums).toFixed(2)}%`;
+            document.getElementById('max-humidity').innerText = `${Math.max(...hums).toFixed(2)}%`;
+        }
+
+        function updateChart() {
+            const ctx = document.getElementById('telemetryChart').getContext('2d');
+            const labels = telemetryHistory.map(d => d.time);
+            const tempData = telemetryHistory.map(d => parseFloat(d.temp));
+            const humData = telemetryHistory.map(d => parseFloat(d.humidity));
+
+            if (!chartInstance) {
+                chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: labels, datasets: [
+                        { label: 'Temperature (°C)', data: tempData, borderColor: '#ff5e57', backgroundColor: 'rgba(255, 94, 87, 0.05)', fill: true, tension: 0.3 },
+                        { label: 'Humidity (%)', data: humData, borderColor: '#0fbcf9', backgroundColor: 'rgba(15, 188, 249, 0.05)', fill: true, tension: 0.3 }
+                    ]},
+                    options: { responsive: true, maintainAspectRatio: false, animation: false }
+                });
+            } else {
+                chartInstance.data.labels = labels;
+                chartInstance.data.datasets[0].data = tempData;
+                chartInstance.data.datasets[1].data = humData;
+                chartInstance.update('none');
+            }
+        }
+
+        function dismissAlarm() {
+            document.getElementById('alarm-overlay').classList.add('hidden');
+            setTimeout(() => { alarmTriggered = false; }, 5000); // 5 second cooldown
+        }
+
+        setInterval(fetchTelemetry, 1000);
+        window.addEventListener('load', fetchTelemetry);
+    </script>
+</body>
+</html>
